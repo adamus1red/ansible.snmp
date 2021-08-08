@@ -1,6 +1,23 @@
 ---
 # tasks file for sbaerlocher.snmp
 
+- name: 'linux : Gather the package facts'
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: 'linux : Gather the Service facts'
+  ansible.builtin.service_facts:
+
+- name: 'linux : Gather the facts'
+  ansible.builtin.setup:
+
+- name: 'linux : apt update'
+  become: true
+  when: ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu'
+  apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
+  tags:
+    - packages
+
 - name: 'linux : install snmp'
   become: true
   package:
@@ -59,6 +76,142 @@
   tags:
     - configuration
 
+- name: 'linux : install snmp extension certificate for proxmox'
+  become: true
+  get_url:
+    url: 'https://raw.githubusercontent.com/librenms/librenms-agent/master/snmp/certificate.py'
+    dest: '{{ snmp_extension_scripts + "/" }}'
+    owner: root
+    group: root
+    mode: 0755
+    seuser: system_u
+    serole: object_r
+    setype: lib_t
+    selevel: s0
+  when: '"pve" in ansible_kernel'
+  tags:
+    - configuration
+
+- name: 'linux : install snmp extension smart for proxmox'
+  become: true
+  get_url:
+    url: 'https://github.com/librenms/librenms-agent/raw/master/snmp/smart'
+    dest: '{{ snmp_extension_scripts + "/" }}'
+    owner: root
+    group: root
+    mode: 0755
+    seuser: system_u
+    serole: object_r
+    setype: lib_t
+    selevel: s0
+  when: '"pve" in ansible_kernel'
+  tags:
+    - configuration
+
+- name: 'linux : install snmp extension zfs for proxmox'
+  become: true
+  get_url:
+    url: 'https://github.com/librenms/librenms-agent/raw/master/snmp/zfs-linux'
+    dest: '{{ snmp_extension_scripts + "/" }}'
+    owner: root
+    group: root
+    mode: 0755
+    seuser: system_u
+    serole: object_r
+    setype: lib_t
+    selevel: s0
+  when: '"pve" in ansible_kernel'
+  tags:
+    - configuration.
+
+- name: 'linux : install snmp extension for nut'
+  when: ansible_facts.services['nut-server'] is defined
+  shell: 'upsc -l'
+  become: true
+  register: upslist
+  tags:
+    - configuration
+
+- name: 'linux : install snmp extension for nut'
+  when: ansible_facts.services['nut-server'] is defined
+  get_url:
+    url: 'https://raw.githubusercontent.com/librenms/librenms-agent/master/snmp/ups-nut.sh'
+    dest: '{{ snmp_extension_scripts + "/" }}'
+    owner: root
+    group: root
+    mode: 0755
+    seuser: system_u
+    serole: object_r
+    setype: lib_t
+    selevel: s0
+  become: true
+  tags:
+    - configuration
+
+- name: 'linux : install snmp extension for powermon'
+  when: ansible_facts.packages['hp-health'] is defined and ansible_virtualization_role != 'guest'
+  get_url:
+    url: 'https://raw.githubusercontent.com/adamus1red/librenms-agent/adamus1red-customizations/snmp/powermon-snmp.py'
+    dest: '{{ snmp_extension_scripts + "/" }}'
+    owner: root
+    group: root
+    mode: 0755
+    seuser: system_u
+    serole: object_r
+    setype: lib_t
+    selevel: s0
+  become: true
+  tags:
+    - configuration
+
+- name: 'linux : install snmp extension for NTP'
+  when: ansible_facts.services['ntp'] is defined
+  get_url:
+    url: 'https://raw.githubusercontent.com/librenms/librenms-agent/master/snmp/ntp-server.sh'
+    dest: '{{ snmp_extension_scripts + "/" }}'
+    owner: root
+    group: root
+    mode: 0755
+    seuser: system_u
+    serole: object_r
+    setype: lib_t
+    selevel: s0
+  become: true
+  tags:
+    - configuration
+
+- name: 'linux : install snmp extension raspberry pi'
+  become: true
+  get_url:
+    url: ' https://raw.githubusercontent.com/librenms/librenms-agent/master/snmp/raspberry.sh'
+    dest: '{{ snmp_extension_scripts + "/" }}'
+    owner: root
+    group: root
+    mode: 0755
+    seuser: system_u
+    serole: object_r
+    setype: lib_t
+    selevel: s0
+  when: 'ansible_lsb.id is defined and "Raspbian" in ansible_lsb.id '
+  tags:
+    - configuration
+
+- name: "linux : install snmp extension docker"
+  when: "'docker-ce' in ansible_facts.packages or 'docker' in ansible_facts.packages"
+  become: true
+  get_url:
+    url: ' https://github.com/librenms/librenms-agent/raw/master/snmp/docker-stats.sh'
+    dest: '{{ snmp_extension_scripts + "/" }}'
+    owner: root
+    group: root
+    mode: 0755
+    seuser: system_u
+    serole: object_r
+    setype: lib_t
+    selevel: s0
+  tags:
+    - configuration
+
 - name: 'linux : configure snmpd daemon'
   become: true
   template:
@@ -88,6 +241,36 @@
     selevel: s0
   register: check_snmp
   check_mode: true
+  tags:
+    - configuration
+
+- name: 'linux : setup Debian sudo rules'
+  when: 'ansible_os_family=="Debian"'
+  template:
+    src: 'sudo/snmpd.{{ ansible_os_family }}.conf.j2'
+    dest: '/etc/sudoers.d/99_snmpd'
+    owner: root
+    group: root
+    mode: 0600
+    seuser: system_u
+    serole: object_r
+    setype: etc_t
+    selevel: s0
+  tags:
+    - configuration
+
+- name: 'linux : configure proxmox certificate extend'
+  when: '"pve" in ansible_kernel'
+  template:
+    src: 'snmp/extend/certificate-pve.j2'
+    dest: '/etc/snmp/certificate.json'
+    owner: root
+    group: root
+    mode: 0600
+    seuser: system_u
+    serole: object_r
+    setype: etc_t
+    selevel: s0
   tags:
     - configuration
 
